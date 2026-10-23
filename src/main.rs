@@ -1,4 +1,3 @@
-mod audio;
 mod bot;
 mod groq;
 mod telegram;
@@ -7,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use tokio::sync::Semaphore;
 use tracing_subscriber::EnvFilter;
 
 use crate::bot::{Bot, Config};
@@ -18,16 +16,6 @@ const POLL_TIMEOUT_SECS: u64 = 50;
 
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
-}
-
-fn env_parse<T: std::str::FromStr>(name: &str, default: T) -> Result<T> {
-    match env(name) {
-        Some(v) => v
-            .trim()
-            .parse()
-            .map_err(|_| anyhow::anyhow!("{name} has an invalid value: {v}")),
-        None => Ok(default),
-    }
 }
 
 #[tokio::main]
@@ -42,8 +30,6 @@ async fn main() -> Result<()> {
     let groq_key = env("GROQ_API_KEY").context("GROQ_API_KEY is not set")?;
     let model = env("GROQ_MODEL").unwrap_or_else(|| "whisper-large-v3-turbo".into());
     let language = env("WHISPER_LANGUAGE");
-    let chunk_secs: f64 = env_parse("CHUNK_SECONDS", 20.0)?;
-    let max_parallel: usize = env_parse("MAX_PARALLEL_REQUESTS", 4)?;
     let allowed_users = env("ALLOWED_USER_IDS")
         .map(|v| {
             v.split(',')
@@ -63,11 +49,6 @@ async fn main() -> Result<()> {
         .connect_timeout(Duration::from_secs(10))
         .build()?;
 
-    let ffmpeg = audio::ffmpeg_available().await;
-    if !ffmpeg {
-        tracing::warn!("ffmpeg not found: long recordings will be sent in one piece");
-    }
-
     let tg = Telegram::new(http.clone(), token);
     let groq = Groq::new(http, groq_key, model.clone(), language);
     groq.warm_up().await?;
@@ -76,14 +57,9 @@ async fn main() -> Result<()> {
     let bot = Arc::new(Bot {
         tg: tg.clone(),
         groq,
-        config: Config {
-            allowed_users,
-            chunk_secs,
-            ffmpeg,
-        },
-        groq_slots: Arc::new(Semaphore::new(max_parallel.max(1))),
+        config: Config { allowed_users },
     });
-    tracing::info!(%model, chunk_secs, max_parallel, "bot started");
+    tracing::info!(%model, "bot started");
 
     tokio::select! {
         res = poll(tg, bot) => res,

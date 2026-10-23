@@ -136,23 +136,6 @@ impl Telegram {
         .await
     }
 
-    /// Streams a partial message to a private chat. An empty `text` shows a
-    /// "Thinking…" placeholder. Drafts with the same `draft_id` are animated.
-    pub async fn send_message_draft(
-        &self,
-        chat_id: i64,
-        thread_id: Option<i64>,
-        draft_id: i64,
-        text: &str,
-    ) -> Result<bool> {
-        let mut body = json!({ "chat_id": chat_id, "draft_id": draft_id, "text": text });
-        if let Some(thread_id) = thread_id {
-            body["message_thread_id"] = thread_id.into();
-        }
-        self.call("sendMessageDraft", &body, Duration::from_secs(10))
-            .await
-    }
-
     pub async fn send_message(
         &self,
         chat_id: i64,
