@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::EnvFilter;
 
 use crate::bot::{Bot, Config};
@@ -61,9 +62,15 @@ async fn main() -> Result<()> {
     });
     tracing::info!(%model, "bot started");
 
+    // Docker stops containers with SIGTERM, which PID 1 ignores unless handled.
+    let mut sigterm = signal(SignalKind::terminate())?;
     tokio::select! {
         res = poll(tg, bot) => res,
         _ = tokio::signal::ctrl_c() => {
+            tracing::info!("shutting down");
+            Ok(())
+        }
+        _ = sigterm.recv() => {
             tracing::info!("shutting down");
             Ok(())
         }
